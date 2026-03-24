@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>櫻花金馬之櫻 - 機車位抽籤系統</title>
+    <!-- 引入 Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #e8f5e9; /* 預設測試模式背景色 (淡綠色) */
+            padding-top: 2rem;
+            transition: background-color 0.3s ease; /* 加入平滑漸變效果 */
+        }
+        .header-title {
+            color: #d63384; /* 櫻花粉色系點綴 */
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="text-center mb-4">
+        <h1 class="header-title fw-bold">櫻花金馬之櫻</h1>
+        <h3 class="text-secondary">社區機車位抽籤系統</h3>
+    </div>
+
+    <!-- 主選單 (Menu) -->
+    <ul class="nav nav-pills justify-content-center mb-4 shadow-sm p-2 bg-white rounded-pill">
+        <li class="nav-item px-1">
+            <a class="nav-link active rounded-pill px-4" aria-current="page" href="Index.html">🎲 抽籤作業</a>
+        </li>
+        <li class="nav-item px-1">
+            <a class="nav-link rounded-pill px-4 text-dark" href="History.html">📜 歷史紀錄</a>
+        </li>
+    </ul>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <h5 class="card-title mb-0">車位分配名冊</h5>
+            <div class="d-flex gap-2">
+                <input type="text" id="searchInput" class="form-control" placeholder="搜尋戶別 (例如: 2A1)">
+                
+                <!-- 模式切換 (Radio) -->
+                <div class="btn-group" role="group" aria-label="抽籤模式切換">
+                    <input type="radio" class="btn-check" name="modeRadio" id="modeTest" autocomplete="off" checked>
+                    <label class="btn btn-outline-success text-nowrap" for="modeTest">🧪 測試模式</label>
+
+                    <input type="radio" class="btn-check" name="modeRadio" id="modeDraw" autocomplete="off">
+                    <label class="btn btn-outline-danger text-nowrap" for="modeDraw">⚠️ 正式模式</label>
+                </div>
+
+                <button id="drawBtn" class="btn btn-primary text-nowrap">🎲 開始第二屆抽籤</button>
+                <button id="unlockBtn" class="btn btn-outline-danger text-nowrap d-none">🔓 解鎖</button>
+                <button id="exportBtn" class="btn btn-success text-nowrap d-none">📥 匯出名單</button>
+            </div>
+        </div>
+        <!-- 抽籤驗證結果顯示區塊 -->
+        <div id="validationResult" class="card-footer bg-white border-top-0 pt-0 d-none text-end pb-3"></div>
+    </div>
+
+    <div class="table-responsive shadow-sm">
+        <table class="table table-hover table-bordered bg-white text-center align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">A棟 戶別</th>
+                    <th scope="col" class="table-primary">車位號碼 (抽籤結果)</th>
+                    <th scope="col">#</th>
+                    <th scope="col">B棟 戶別</th>
+                    <th scope="col" class="table-primary">車位號碼 (抽籤結果)</th>
+                    <th scope="col">#</th>
+                    <th scope="col">C棟 戶別</th>
+                    <th scope="col" class="table-primary">車位號碼 (抽籤結果)</th>
+                </tr>
+            </thead>
+            <tbody id="parkingTableBody">
+                <!-- 資料將由 JavaScript 動態生成 -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 引入 Bootstrap 5 JS Bundle -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- 引入外部的基礎車位資料 -->
+<script src="javascript/data.js"></script>
+
+<script>
+    // 自定義排序函數：依照「棟別(英文字)」優先，再來是「樓層(前面數字)」，最後是「戶型編號(後面數字)」
+    function customUnitSort(a, b) {
+        // 利用正則表達式拆解戶別，例: 2A1 -> 樓層=2, 棟別=A, 戶型=1
+        const regex = /^(\d+)([A-Za-z])(\d+)$/;
+        const matchA = a.unit.match(regex);
+        const matchB = b.unit.match(regex);
+
+        if (matchA && matchB) {
+            const floorA = parseInt(matchA[1], 10);
+            const buildingA = matchA[2].toUpperCase();
+            const unitA = parseInt(matchA[3], 10);
+
+            const floorB = parseInt(matchB[1], 10);
+            const buildingB = matchB[2].toUpperCase();
+            const unitB = parseInt(matchB[3], 10);
+
+            // 1. 比較棟別 (A -> B -> C)
+            if (buildingA !== buildingB) {
+                return buildingA.localeCompare(buildingB);
+            }
+            // 2. 比較樓層 (數字大小)
+            if (floorA !== floorB) {
+                return floorA - floorB;
+            }
+            // 3. 比較戶型編號 (數字大小)
+            return unitA - unitB;
+        }
+        return a.unit.localeCompare(b.unit, 'zh-Hant', { numeric: true });
+    }
+
+    // 將戶別資料依照客製化排序
+    baseUnits.sort(customUnitSort);
+
+    // DOM 元素
+    const tableBody = document.getElementById('parkingTableBody');
+    const drawBtn = document.getElementById('drawBtn');
+    const unlockBtn = document.getElementById('unlockBtn');
+    const searchInput = document.getElementById('searchInput');
+    const modeTest = document.getElementById('modeTest');
+    const modeDraw = document.getElementById('modeDraw');
+    const exportBtn = document.getElementById('exportBtn');
+
+    // 狀態管理
+    let currentRenderData = [...baseUnits];
+    let isSecondTermDrawn = false;
+    let currentFingerprint = ''; // 用來暫存目前的數位指紋供匯出使用
+
+    // 2. 初始化表格，顯示基礎戶別資料
+    function renderTable(data, isSecondTerm = false) {
+        tableBody.innerHTML = '';
+        
+        // 將資料按 A, B, C 棟分類
+        const dataA = data.filter(item => {
+            const m = item.unit.match(/[A-Za-z]/);
+            return m && m[0].toUpperCase() === 'A';
+        });
+        const dataB = data.filter(item => {
+            const m = item.unit.match(/[A-Za-z]/);
+            return m && m[0].toUpperCase() === 'B';
+        });
+        const dataC = data.filter(item => {
+            const m = item.unit.match(/[A-Za-z]/);
+            return m && m[0].toUpperCase() === 'C';
+        });
+
+        // 找出三棟中最多戶數的一棟，決定表格要畫幾列
+        const maxRows = Math.max(dataA.length, dataB.length, dataC.length);
+
+        // 搜尋不到時的防呆提示
+        if (maxRows === 0) {
+            tableBody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-3">找不到符合條件的紀錄</td></tr>`;
+            return;
+        }
+
+        for (let i = 0; i < maxRows; i++) {
+            const itemA = dataA[i];
+            const itemB = dataB[i];
+            const itemC = dataC[i];
+
+            const row = document.createElement('tr');
+            let rowHTML = '';
+
+            // 渲染 A 棟
+            if (itemA) {
+                const indexA = data.indexOf(itemA) + 1;
+                const termCell1 = isSecondTerm
+                    ? `<td class="fw-bold text-primary fs-5">${itemA.newSlot}</td>`
+                    : `<td class="text-muted">尚未抽籤</td>`;
+                rowHTML += `
+                    <th scope="row">${indexA}</th>
+                    <td class="fw-bold">${itemA.unit}</td>
+                    ${termCell1}
+                `;
+            } else {
+                rowHTML += `<td></td><td></td><td></td>`;
+            }
+
+            // 渲染 B 棟
+            if (itemB) {
+                const indexB = data.indexOf(itemB) + 1;
+                const termCell2 = isSecondTerm
+                    ? `<td class="fw-bold text-primary fs-5">${itemB.newSlot}</td>`
+                    : `<td class="text-muted">尚未抽籤</td>`;
+                rowHTML += `
+                    <th scope="row">${indexB}</th>
+                    <td class="fw-bold">${itemB.unit}</td>
+                    ${termCell2}
+                `;
+            } else {
+                rowHTML += `<td></td><td></td><td></td>`;
+            }
+
+            // 渲染 C 棟
+            if (itemC) {
+                const indexC = data.indexOf(itemC) + 1;
+                const termCell3 = isSecondTerm
+                    ? `<td class="fw-bold text-primary fs-5">${itemC.newSlot}</td>`
+                    : `<td class="text-muted">尚未抽籤</td>`;
+                rowHTML += `
+                    <th scope="row">${indexC}</th>
+                    <td class="fw-bold">${itemC.unit}</td>
+                    ${termCell3}
+                `;
+            } else {
+                rowHTML += `<td></td><td></td><td></td>`;
+            }
+
+            row.innerHTML = rowHTML;
+            tableBody.appendChild(row);
+        }
+    }
+
+    // 頁面載入時先渲染基礎戶別資料
+    renderTable(baseUnits);
+
+    // 搜尋功能：方便查看特定戶別的歷屆與抽籤結果
+    searchInput.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        const filteredData = currentRenderData.filter(item => item.unit.toLowerCase().includes(searchTerm));
+        renderTable(filteredData, isSecondTermDrawn);
+    });
+
+    // 3. 洗牌演算法 (Fisher-Yates Shuffle) - 確保抽籤隨機且公平
+    function shuffleArray(array) {
+        const newArray = [...array];
+        for (let i = newArray.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+        }
+        return newArray;
+    }
+
+    // 產生數位抽籤指紋 (SHA-256) 的非同步函數
+    async function generateDrawFingerprint(dataArray) {
+        // 將抽籤結果轉換為特定格式的字串 (例如: 2A1:209|6A5:8|...) 進行雜湊
+        const drawString = dataArray.map(item => `${item.unit}:${item.newSlot}`).join('|');
+        const encoder = new TextEncoder();
+        const data = encoder.encode(drawString);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // 4. 執行第二屆抽籤邏輯
+    drawBtn.addEventListener('click', async () => {
+        const isTestMode = modeTest.checked;
+        
+        if (!isTestMode) {
+            // 正式模式：鎖定抽籤按鈕，並顯示解鎖按鈕以防誤觸
+            drawBtn.disabled = true;
+            unlockBtn.classList.remove('d-none');
+        }
+        
+        // 提取所有可用的車位號碼
+        const availableSlots = firstTermData.map(item => item.slot);
+        // 將車位號碼打亂
+        const shuffledSlots = shuffleArray(availableSlots);
+        // 將打亂後的車位重新分配給住戶
+        currentRenderData = baseUnits.map((item, index) => {
+            return {
+                ...item,
+                newSlot: shuffledSlots[index]
+            };
+        });
+
+        isSecondTermDrawn = true;
+
+        // --- 抽籤驗證機制 ---
+        const assignedSlots = currentRenderData.map(item => item.newSlot);
+        const uniqueSlots = new Set(assignedSlots);
+        // 1. 驗證數量是否吻合總戶數
+        const isCountMatch = assignedSlots.length === baseUnits.length;
+        // 2. 驗證分配出的車位是否有重複 (Set 會自動剔除重複值)
+        const isNoDuplicate = uniqueSlots.size === assignedSlots.length;
+        
+        const validationEl = document.getElementById('validationResult');
+        validationEl.classList.remove('d-none');
+        
+        if (isCountMatch && isNoDuplicate) {
+            // 驗證通過後，計算數位指紋
+            const fingerprint = await generateDrawFingerprint(currentRenderData);
+            currentFingerprint = fingerprint; // 暫存起來
+            const modeText = isTestMode ? "🧪 [測試模式]" : "✔️ [正式紀錄]";
+            validationEl.innerHTML = `
+                <div class="text-success fw-bold">${modeText} 系統內部驗證通過：已成功隨機分配 ${assignedSlots.length} 個車位，無重複且無遺漏。</div>
+                <div class="text-muted small mt-1" style="word-break: break-all;">
+                    🔐 抽籤數位指紋 (SHA-256)：<span class="font-monospace text-dark user-select-all">${fingerprint}</span>
+                </div>
+            `;
+            // 驗證成功且為正式模式時，才顯示匯出按鈕
+            if (!isTestMode) {
+                exportBtn.classList.remove('d-none');
+            }
+        } else {
+            validationEl.innerHTML = `<div class="text-danger fw-bold">❌ 系統驗證發生異常：車位分配可能重複或遺漏，請重新抽籤！</div>`;
+        }
+        // ------------------
+
+        // 觸發搜尋過濾 (若搜尋框目前有輸入值，則保留搜尋結果狀態下更新視圖)
+        searchInput.dispatchEvent(new Event('input'));
+    });
+
+    // 5. 解鎖按鈕邏輯
+    unlockBtn.addEventListener('click', () => {
+        const confirmUnlock = confirm("⚠️ 警告：解鎖後將可以重新抽籤，目前的抽籤結果將會被覆蓋！\n\n請問確定要解鎖嗎？");
+        if (confirmUnlock) {
+            drawBtn.disabled = false;
+            unlockBtn.classList.add('d-none');
+            
+            const validationEl = document.getElementById('validationResult');
+            validationEl.classList.add('d-none');
+            validationEl.innerHTML = ''; // 清空驗證紀錄與指紋
+            
+            currentRenderData = [...baseUnits]; // 抽籤結果清空，恢復為基礎戶別資料
+            isSecondTermDrawn = false; // 狀態重置
+            currentFingerprint = '';
+            exportBtn.classList.add('d-none');
+            searchInput.dispatchEvent(new Event('input')); // 觸發重新渲染畫面
+        }
+    });
+
+    // 6. 切換回測試模式時，自動解除鎖定狀態並換回測試模式背景色
+    modeTest.addEventListener('change', () => {
+        if (modeTest.checked) {
+            drawBtn.disabled = false;
+            unlockBtn.classList.add('d-none');
+            document.body.style.backgroundColor = '#e8f5e9'; // 換回淡綠色背景 (測試模式)
+            
+            const validationEl = document.getElementById('validationResult');
+            validationEl.classList.add('d-none');
+            validationEl.innerHTML = ''; // 模式切換時清空驗證紀錄與指紋
+            currentFingerprint = '';
+            exportBtn.classList.add('d-none');
+        }
+    });
+
+    // 7. 切換到正式模式時，更改背景顏色作為視覺提醒
+    modeDraw.addEventListener('change', () => {
+        if (modeDraw.checked) {
+            document.body.style.backgroundColor = '#fff0f5'; // 換成淡粉紅色背景
+            
+            const validationEl = document.getElementById('validationResult');
+            validationEl.classList.add('d-none');
+            validationEl.innerHTML = ''; // 模式切換時清空驗證紀錄與指紋
+            currentFingerprint = '';
+            exportBtn.classList.add('d-none');
+        }
+    });
+
+    // 8. 匯出 Excel (CSV) 邏輯
+    exportBtn.addEventListener('click', () => {
+        if (!isSecondTermDrawn) return;
+
+        // 加上 BOM (\uFEFF) 讓 Excel 能夠正確解析 UTF-8 中文
+        let csvContent = '\uFEFF';
+        csvContent += '戶別,抽籤車位號碼\n';
+        
+        currentRenderData.forEach(item => {
+            csvContent += `${item.unit},${item.newSlot}\n`;
+        });
+
+        // 在名單最下方附上數位指紋驗證資訊
+        csvContent += '\n';
+        csvContent += `系統內部驗證,無重複且無遺漏\n`;
+        csvContent += `數位抽籤指紋 (SHA-256),${currentFingerprint}\n`;
+        csvContent += `匯出時間,${new Date().toLocaleString()}\n`;
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        const modePrefix = modeTest.checked ? "[測試]" : "[正式]";
+        link.setAttribute('download', `${modePrefix}第二屆機車位抽籤結果.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>歷史紀錄 - 櫻花金馬之櫻</title>
+    <!-- 引入 Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding-top: 2rem;
+        }
+        .header-title {
+            color: #d63384; /* 櫻花粉色系點綴 */
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="text-center mb-4">
+        <h1 class="header-title fw-bold">櫻花金馬之櫻</h1>
+        <h3 class="text-secondary">歷屆機車位歷史紀錄</h3>
+    </div>
+
+    <!-- 主選單 (Menu) -->
+    <ul class="nav nav-pills justify-content-center mb-4 shadow-sm p-2 bg-white rounded-pill">
+        <li class="nav-item px-1">
+            <a class="nav-link rounded-pill px-4 text-dark" href="Index.html">🎲 抽籤作業</a>
+        </li>
+        <li class="nav-item px-1">
+            <a class="nav-link active rounded-pill px-4" aria-current="page" href="History.html">📜 歷史紀錄</a>
+        </li>
+    </ul>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <h5 class="card-title mb-0">歷屆車位分配名冊</h5>
+            <div class="d-flex gap-2">
+                <input type="text" id="searchInput" class="form-control" placeholder="搜尋戶別 (例如: 2A1)">
+            </div>
+        </div>
+    </div>
+
+    <!-- 歷史紀錄收合選單 (Accordion) -->
+    <div class="accordion shadow-sm" id="historyAccordion">
+        <!-- 資料將由 JavaScript 動態生成 -->
+    </div>
+</div>
+
+<!-- 引入 Bootstrap 5 JS Bundle -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- 引入外部的基礎車位資料 -->
+<script src="javascript/data.js"></script>
+
+<script>
+    // 將歷史紀錄改為陣列結構，越新的屆期可以透過新增在「陣列最前面」來保持置頂
+    const historicalRecords = [
+        {
+            id: "term1",
+            title: "第一屆機車位",
+            period: "有效日期：114年6月1日至115年5月30日",
+            // 直接使用外部載入的 firstTermData (利用展開運算子避免陣列參照互相干擾)
+            data: [...firstTermData]
+        }
+        // 如果未來有「第二屆」資料，可以直接複製上方格式並貼在陣列「最上方」，就會自動顯示在最上面並預設展開。
+    ];
+
+    // 自定義排序函數：依照「棟別(英文字)」優先，再來是「樓層(前面數字)」，最後是「戶型編號(後面數字)」
+    function customUnitSort(a, b) {
+        // 利用正則表達式拆解戶別，例: 2A1 -> 樓層=2, 棟別=A, 戶型=1
+        const regex = /^(\d+)([A-Za-z])(\d+)$/;
+        const matchA = a.unit.match(regex);
+        const matchB = b.unit.match(regex);
+
+        if (matchA && matchB) {
+            const floorA = parseInt(matchA[1], 10);
+            const buildingA = matchA[2].toUpperCase();
+            const unitA = parseInt(matchA[3], 10);
+
+            const floorB = parseInt(matchB[1], 10);
+            const buildingB = matchB[2].toUpperCase();
+            const unitB = parseInt(matchB[3], 10);
+
+            // 1. 比較棟別 (A -> B -> C)
+            if (buildingA !== buildingB) {
+                return buildingA.localeCompare(buildingB);
+            }
+            // 2. 比較樓層 (數字大小)
+            if (floorA !== floorB) {
+                return floorA - floorB;
+            }
+            // 3. 比較戶型編號 (數字大小)
+            return unitA - unitB;
+        }
+        
+        // 防呆：若有不符合格式的資料，退回基本的字串比較
+        return a.unit.localeCompare(b.unit, 'zh-Hant', { numeric: true });
+    }
+
+    // 將每一屆的資料進行客製化排序
+    historicalRecords.forEach(term => {
+        term.data.sort(customUnitSort);
+    });
+
+    const accordionContainer = document.getElementById('historyAccordion');
+    const searchInput = document.getElementById('searchInput');
+
+    // 渲染收合選單與表格內容
+    function renderAccordion(searchTerm = "") {
+        accordionContainer.innerHTML = '';
+        let hasAnyMatch = false;
+
+        historicalRecords.forEach((term, index) => {
+            // 根據搜尋條件過濾
+            const filteredData = term.data.filter(item => 
+                item.unit.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+
+            // 若在搜尋狀態下此屆無資料符合，則不顯示這屆的區塊
+            if (searchTerm && filteredData.length === 0) return;
+
+            hasAnyMatch = true;
+            // 將最新的（陣列第一筆）預設展開，其餘收合
+            const isOpen = index === 0 ? "show" : "";
+            const isButtonCollapsed = index === 0 ? "" : "collapsed";
+
+            // 生成此屆的表格內容
+            let tableRows = '';
+            
+            // 將資料按 A, B, C 棟分類
+            const dataA = filteredData.filter(item => {
+                const m = item.unit.match(/[A-Za-z]/);
+                return m && m[0].toUpperCase() === 'A';
+            });
+            const dataB = filteredData.filter(item => {
+                const m = item.unit.match(/[A-Za-z]/);
+                return m && m[0].toUpperCase() === 'B';
+            });
+            const dataC = filteredData.filter(item => {
+                const m = item.unit.match(/[A-Za-z]/);
+                return m && m[0].toUpperCase() === 'C';
+            });
+
+            // 找出三棟中最多戶數的一棟，決定表格要畫幾列
+            const maxRows = Math.max(dataA.length, dataB.length, dataC.length);
+
+            // 搜尋不到時的防呆提示
+            if (maxRows === 0) {
+                tableRows = `<tr><td colspan="9" class="text-center text-muted py-3">找不到符合條件的紀錄</td></tr>`;
+            } else {
+                for (let i = 0; i < maxRows; i++) {
+                    const itemA = dataA[i];
+                    const itemB = dataB[i];
+                    const itemC = dataC[i];
+
+                    let rowHTML = '';
+
+                    // 渲染 A 棟
+                    if (itemA) {
+                        const indexA = term.data.indexOf(itemA) + 1; // 維持在總名單中的絕對編號
+                        rowHTML += `
+                            <th scope="row">${indexA}</th>
+                            <td class="fw-bold">${itemA.unit}</td>
+                            <td>${itemA.slot}</td>
+                        `;
+                    } else {
+                        rowHTML += `<td></td><td></td><td></td>`;
+                    }
+
+                    // 渲染 B 棟
+                    if (itemB) {
+                        const indexB = term.data.indexOf(itemB) + 1;
+                        rowHTML += `
+                            <th scope="row">${indexB}</th>
+                            <td class="fw-bold">${itemB.unit}</td>
+                            <td>${itemB.slot}</td>
+                        `;
+                    } else {
+                        rowHTML += `<td></td><td></td><td></td>`;
+                    }
+
+                    // 渲染 C 棟
+                    if (itemC) {
+                        const indexC = term.data.indexOf(itemC) + 1;
+                        rowHTML += `
+                            <th scope="row">${indexC}</th>
+                            <td class="fw-bold">${itemC.unit}</td>
+                            <td>${itemC.slot}</td>
+                        `;
+                    } else {
+                        rowHTML += `<td></td><td></td><td></td>`;
+                    }
+
+                    tableRows += `<tr>${rowHTML}</tr>`;
+                }
+            }
+
+            const accordionItemHTML = `
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading-${term.id}">
+                        <button class="accordion-button ${isButtonCollapsed} bg-light" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${term.id}" aria-expanded="${index === 0 ? 'true' : 'false'}" aria-controls="collapse-${term.id}">
+                            <strong>${term.title}</strong> <span class="ms-2 text-muted fs-6 d-none d-sm-inline">(${term.period})</span>
+                        </button>
+                    </h2>
+                    <div id="collapse-${term.id}" class="accordion-collapse collapse ${isOpen}" aria-labelledby="heading-${term.id}" data-bs-parent="#historyAccordion">
+                        <div class="accordion-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover table-bordered bg-white text-center align-middle mb-0">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th scope="col">#</th>
+                                            <th scope="col">A棟 戶別</th>
+                                            <th scope="col">車位號碼</th>
+                                            <th scope="col">#</th>
+                                            <th scope="col">B棟 戶別</th>
+                                            <th scope="col">車位號碼</th>
+                                            <th scope="col">#</th>
+                                            <th scope="col">C棟 戶別</th>
+                                            <th scope="col">車位號碼</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${tableRows}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            accordionContainer.insertAdjacentHTML('beforeend', accordionItemHTML);
+        });
+
+        // 搜尋不到任何資料時的防呆顯示
+        if (!hasAnyMatch) {
+            accordionContainer.innerHTML = `<div class="p-4 text-center text-muted border rounded bg-white">找不到符合「${searchTerm}」的歷史紀錄。</div>`;
+        }
+    }
+
+    // 頁面載入時初始渲染
+    renderAccordion();
+
+    // 搜尋功能
+    searchInput.addEventListener('input', (e) => {
+        renderAccordion(e.target.value);
+    });
+</script>
+
+</body>
+</html>
