@@ -39,7 +39,7 @@
         <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
             <h5 class="card-title mb-0">車位分配名冊</h5>
             <div class="d-flex gap-2">
-                <input type="text" id="searchInput" class="form-control" placeholder="搜尋戶別 (例如: 2A1)">
+                <input type="text" id="searchInput" class="form-control" placeholder="搜尋戶別 (例如: A2-5)">
                 
                 <!-- 模式切換 (Radio) -->
                 <div class="btn-group" role="group" aria-label="抽籤模式切換">
@@ -64,14 +64,20 @@
             <thead class="table-dark">
                 <tr>
                     <th scope="col">#</th>
-                    <th scope="col">A棟 戶別</th>
-                    <th scope="col" class="table-primary">車位號碼 (抽籤結果)</th>
+                    <th scope="col">門牌</th>
+                    <th scope="col" class="table-primary">車位號碼 </br> (抽籤結果)</th>
                     <th scope="col">#</th>
-                    <th scope="col">B棟 戶別</th>
-                    <th scope="col" class="table-primary">車位號碼 (抽籤結果)</th>
+                    <th scope="col">門牌</th>
+                    <th scope="col" class="table-primary">車位號碼 </br> (抽籤結果)</th>
                     <th scope="col">#</th>
-                    <th scope="col">C棟 戶別</th>
-                    <th scope="col" class="table-primary">車位號碼 (抽籤結果)</th>
+                    <th scope="col">門牌</th>
+                    <th scope="col" class="table-primary">車位號碼 </br> (抽籤結果)</th>
+                    <th scope="col">#</th>
+                    <th scope="col">門牌</th>
+                    <th scope="col" class="table-primary">車位號碼 </br> (抽籤結果)</th>
+                    <th scope="col">#</th>
+                    <th scope="col">門牌</th>
+                    <th scope="col" class="table-primary">車位號碼 </br> (抽籤結果)</th>
                 </tr>
             </thead>
             <tbody id="parkingTableBody">
@@ -88,6 +94,60 @@
 <script src="javascript/data.js"></script>
 
 <script>
+    /**
+     * 戶別轉換邏輯 (舊制轉新制門牌號)
+     * 舊制: [樓層][棟別][戶型] -> 新制: [棟別][樓層]-[門牌號]
+     * 
+     * 對應規則:
+     * A棟 - A1:2, A2:1, A3:6, A5:5, A6:3
+     * B棟 - B1:6, B2:5, B3:3, B5:2, B6:1
+     * C棟 - C1:1, C2:6, C3:5, C5:3, C6:2
+     * C棟一樓 - 1C1:C1, 1C3:C1-3, 1C5:C1-2, 1C6:C1-1
+     */
+    function formatUnitToDoorNumber(unitStr) {
+        if (unitStr === "1C1") return "C1";
+        if (unitStr === "1C3") return "C1-3";
+        if (unitStr === "1C5") return "C1-2";
+        if (unitStr === "1C6") return "C1-1";
+
+        const regex = /^(\d+)([A-Za-z])(\d+)$/;
+        const match = unitStr.match(regex);
+        if (!match) return unitStr;
+
+        const floor = match[1];
+        const building = match[2].toUpperCase();
+        const unitType = match[3];
+
+        const mapping = {
+            'A': { '1': '2', '2': '1', '3': '6', '5': '5', '6': '3' },
+            'B': { '1': '6', '2': '5', '3': '3', '5': '2', '6': '1' },
+            'C': { '1': '1', '2': '6', '3': '5', '5': '3', '6': '2' }
+        };
+
+        const doorNum = mapping[building] && mapping[building][unitType];
+        if (doorNum) {
+            return `${building}${floor}-${doorNum}`;
+        }
+        return unitStr;
+    }
+
+    /**
+     * 取得供排序用的門牌號數字 (確保同樓層按門牌號小到大排序)
+     */
+    function getDoorNumberForSort(building, unitType, unitStr) {
+        if (unitStr === "1C1") return 0;
+        if (unitStr === "1C6") return 1; // C1-1
+        if (unitStr === "1C5") return 2; // C1-2
+        if (unitStr === "1C3") return 3; // C1-3
+
+        const mapping = {
+            'A': { '1': 2, '2': 1, '3': 6, '5': 5, '6': 3 },
+            'B': { '1': 6, '2': 5, '3': 3, '5': 2, '6': 1 },
+            'C': { '1': 1, '2': 6, '3': 5, '5': 3, '6': 2 }
+        };
+        return (mapping[building] && mapping[building][unitType]) ? mapping[building][unitType] : parseInt(unitType, 10);
+    }
+
     // 自定義排序函數：依照「棟別(英文字)」優先，再來是「樓層(前面數字)」，最後是「戶型編號(後面數字)」
     function customUnitSort(a, b) {
         // 利用正則表達式拆解戶別，例: 2A1 -> 樓層=2, 棟別=A, 戶型=1
@@ -98,11 +158,11 @@
         if (matchA && matchB) {
             const floorA = parseInt(matchA[1], 10);
             const buildingA = matchA[2].toUpperCase();
-            const unitA = parseInt(matchA[3], 10);
+            const unitA = matchA[3];
 
             const floorB = parseInt(matchB[1], 10);
             const buildingB = matchB[2].toUpperCase();
-            const unitB = parseInt(matchB[3], 10);
+            const unitB = matchB[3];
 
             // 1. 比較棟別 (A -> B -> C)
             if (buildingA !== buildingB) {
@@ -112,8 +172,10 @@
             if (floorA !== floorB) {
                 return floorA - floorB;
             }
-            // 3. 比較戶型編號 (數字大小)
-            return unitA - unitB;
+            // 3. 比較戶型轉換後的門牌號 (數字大小)
+            const doorA = getDoorNumberForSort(buildingA, unitA, a.unit);
+            const doorB = getDoorNumberForSort(buildingB, unitB, b.unit);
+            return doorA - doorB;
         }
         return a.unit.localeCompare(b.unit, 'zh-Hant', { numeric: true });
     }
@@ -139,81 +201,43 @@
     function renderTable(data, isSecondTerm = false) {
         tableBody.innerHTML = '';
         
-        // 將資料按 A, B, C 棟分類
-        const dataA = data.filter(item => {
-            const m = item.unit.match(/[A-Za-z]/);
-            return m && m[0].toUpperCase() === 'A';
-        });
-        const dataB = data.filter(item => {
-            const m = item.unit.match(/[A-Za-z]/);
-            return m && m[0].toUpperCase() === 'B';
-        });
-        const dataC = data.filter(item => {
-            const m = item.unit.match(/[A-Za-z]/);
-            return m && m[0].toUpperCase() === 'C';
-        });
-
-        // 找出三棟中最多戶數的一棟，決定表格要畫幾列
-        const maxRows = Math.max(dataA.length, dataB.length, dataC.length);
+        // 改為每列顯示 5 戶
+        const maxRows = Math.ceil(data.length / 5);
 
         // 搜尋不到時的防呆提示
         if (maxRows === 0) {
-            tableBody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-3">找不到符合條件的紀錄</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="15" class="text-center text-muted py-3">找不到符合條件的紀錄</td></tr>`;
             return;
         }
 
         for (let i = 0; i < maxRows; i++) {
-            const itemA = dataA[i];
-            const itemB = dataB[i];
-            const itemC = dataC[i];
-
             const row = document.createElement('tr');
             let rowHTML = '';
 
-            // 渲染 A 棟
-            if (itemA) {
-                const indexA = data.indexOf(itemA) + 1;
-                const termCell1 = isSecondTerm
-                    ? `<td class="fw-bold text-primary fs-5">${itemA.newSlot}</td>`
-                    : `<td class="text-muted">尚未抽籤</td>`;
-                rowHTML += `
-                    <th scope="row">${indexA}</th>
-                    <td class="fw-bold">${itemA.unit}</td>
-                    ${termCell1}
-                `;
-            } else {
-                rowHTML += `<td></td><td></td><td></td>`;
-            }
+            // 一列裝入 5 戶
+            const items = [
+                data[i * 5], data[i * 5 + 1],
+                data[i * 5 + 2], data[i * 5 + 3],
+                data[i * 5 + 4]
+            ];
 
-            // 渲染 B 棟
-            if (itemB) {
-                const indexB = data.indexOf(itemB) + 1;
-                const termCell2 = isSecondTerm
-                    ? `<td class="fw-bold text-primary fs-5">${itemB.newSlot}</td>`
-                    : `<td class="text-muted">尚未抽籤</td>`;
-                rowHTML += `
-                    <th scope="row">${indexB}</th>
-                    <td class="fw-bold">${itemB.unit}</td>
-                    ${termCell2}
-                `;
-            } else {
-                rowHTML += `<td></td><td></td><td></td>`;
-            }
-
-            // 渲染 C 棟
-            if (itemC) {
-                const indexC = data.indexOf(itemC) + 1;
-                const termCell3 = isSecondTerm
-                    ? `<td class="fw-bold text-primary fs-5">${itemC.newSlot}</td>`
-                    : `<td class="text-muted">尚未抽籤</td>`;
-                rowHTML += `
-                    <th scope="row">${indexC}</th>
-                    <td class="fw-bold">${itemC.unit}</td>
-                    ${termCell3}
-                `;
-            } else {
-                rowHTML += `<td></td><td></td><td></td>`;
-            }
+            items.forEach(item => {
+                if (item) {
+                    const index = data.indexOf(item) + 1;
+                    const termCell = isSecondTerm
+                        ? `<td class="fw-bold text-primary fs-5">${item.newSlot}</td>`
+                        : `<td class="text-muted">尚未抽籤</td>`;
+                const formattedUnit = formatUnitToDoorNumber(item.unit);
+                const oldUnitDisplay = formattedUnit !== item.unit ? ` <span class="text-muted fw-normal small">(${item.unit})</span>` : '';
+                    rowHTML += `
+                        <th scope="row" class="table-secondary text-muted">${index}</th>
+                        <td class="table-light fw-bold">${formattedUnit}${oldUnitDisplay}</td>
+                        ${termCell}
+                    `;
+                } else {
+                    rowHTML += `<td class="table-secondary"></td><td class="table-light"></td><td></td>`;
+                }
+            });
 
             row.innerHTML = rowHTML;
             tableBody.appendChild(row);
@@ -226,7 +250,10 @@
     // 搜尋功能：方便查看特定戶別的歷屆與抽籤結果
     searchInput.addEventListener('input', (e) => {
         const searchTerm = e.target.value.toLowerCase();
-        const filteredData = currentRenderData.filter(item => item.unit.toLowerCase().includes(searchTerm));
+        const filteredData = currentRenderData.filter(item => 
+            item.unit.toLowerCase().includes(searchTerm) || 
+            formatUnitToDoorNumber(item.unit).toLowerCase().includes(searchTerm)
+        );
         renderTable(filteredData, isSecondTermDrawn);
     });
 
@@ -341,6 +368,9 @@
             validationEl.innerHTML = ''; // 模式切換時清空驗證紀錄與指紋
             currentFingerprint = '';
             exportBtn.classList.add('d-none');
+            currentRenderData = [...baseUnits]; // 抽籤結果清空，恢復為基礎戶別資料
+            isSecondTermDrawn = false; // 狀態重置
+            searchInput.dispatchEvent(new Event('input')); // 觸發重新渲染畫面
         }
     });
 
@@ -354,6 +384,9 @@
             validationEl.innerHTML = ''; // 模式切換時清空驗證紀錄與指紋
             currentFingerprint = '';
             exportBtn.classList.add('d-none');
+            currentRenderData = [...baseUnits]; // 抽籤結果清空，恢復為基礎戶別資料
+            isSecondTermDrawn = false; // 狀態重置
+            searchInput.dispatchEvent(new Event('input')); // 觸發重新渲染畫面
         }
     });
 
@@ -363,10 +396,10 @@
 
         // 加上 BOM (\uFEFF) 讓 Excel 能夠正確解析 UTF-8 中文
         let csvContent = '\uFEFF';
-        csvContent += '戶別,抽籤車位號碼\n';
+        csvContent += '新制門牌,舊制戶別,抽籤車位號碼\n';
         
         currentRenderData.forEach(item => {
-            csvContent += `${item.unit},${item.newSlot}\n`;
+            csvContent += `${formatUnitToDoorNumber(item.unit)},${item.unit},${item.newSlot}\n`;
         });
 
         // 在名單最下方附上數位指紋驗證資訊

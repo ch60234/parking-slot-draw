@@ -68,6 +68,60 @@
         // 如果未來有「第二屆」資料，可以直接複製上方格式並貼在陣列「最上方」，就會自動顯示在最上面並預設展開。
     ];
 
+    /**
+     * 戶別轉換邏輯 (舊制轉新制門牌號)
+     * 舊制: [樓層][棟別][戶型] -> 新制: [棟別][樓層]-[門牌號]
+     * 
+     * 對應規則:
+     * A棟 - A1:2, A2:1, A3:6, A5:5, A6:3
+     * B棟 - B1:6, B2:5, B3:3, B5:2, B6:1
+     * C棟 - C1:1, C2:6, C3:5, C5:3, C6:2
+     * C棟一樓 - 1C1:C1, 1C3:C1-3, 1C5:C1-2, 1C6:C1-1
+     */
+    function formatUnitToDoorNumber(unitStr) {
+        if (unitStr === "1C1") return "C1";
+        if (unitStr === "1C3") return "C1-3";
+        if (unitStr === "1C5") return "C1-2";
+        if (unitStr === "1C6") return "C1-1";
+
+        const regex = /^(\d+)([A-Za-z])(\d+)$/;
+        const match = unitStr.match(regex);
+        if (!match) return unitStr;
+
+        const floor = match[1];
+        const building = match[2].toUpperCase();
+        const unitType = match[3];
+
+        const mapping = {
+            'A': { '1': '2', '2': '1', '3': '6', '5': '5', '6': '3' },
+            'B': { '1': '6', '2': '5', '3': '3', '5': '2', '6': '1' },
+            'C': { '1': '1', '2': '6', '3': '5', '5': '3', '6': '2' }
+        };
+
+        const doorNum = mapping[building] && mapping[building][unitType];
+        if (doorNum) {
+            return `${building}${floor}-${doorNum}`;
+        }
+        return unitStr;
+    }
+
+    /**
+     * 取得供排序用的門牌號數字 (確保同樓層按門牌號小到大排序)
+     */
+    function getDoorNumberForSort(building, unitType, unitStr) {
+        if (unitStr === "1C1") return 0;
+        if (unitStr === "1C6") return 1; // C1-1
+        if (unitStr === "1C5") return 2; // C1-2
+        if (unitStr === "1C3") return 3; // C1-3
+
+        const mapping = {
+            'A': { '1': 2, '2': 1, '3': 6, '5': 5, '6': 3 },
+            'B': { '1': 6, '2': 5, '3': 3, '5': 2, '6': 1 },
+            'C': { '1': 1, '2': 6, '3': 5, '5': 3, '6': 2 }
+        };
+        return (mapping[building] && mapping[building][unitType]) ? mapping[building][unitType] : parseInt(unitType, 10);
+    }
+
     // 自定義排序函數：依照「棟別(英文字)」優先，再來是「樓層(前面數字)」，最後是「戶型編號(後面數字)」
     function customUnitSort(a, b) {
         // 利用正則表達式拆解戶別，例: 2A1 -> 樓層=2, 棟別=A, 戶型=1
@@ -78,11 +132,11 @@
         if (matchA && matchB) {
             const floorA = parseInt(matchA[1], 10);
             const buildingA = matchA[2].toUpperCase();
-            const unitA = parseInt(matchA[3], 10);
+            const unitA = matchA[3];
 
             const floorB = parseInt(matchB[1], 10);
             const buildingB = matchB[2].toUpperCase();
-            const unitB = parseInt(matchB[3], 10);
+            const unitB = matchB[3];
 
             // 1. 比較棟別 (A -> B -> C)
             if (buildingA !== buildingB) {
@@ -92,8 +146,10 @@
             if (floorA !== floorB) {
                 return floorA - floorB;
             }
-            // 3. 比較戶型編號 (數字大小)
-            return unitA - unitB;
+            // 3. 比較戶型轉換後的門牌號 (數字大小)
+            const doorA = getDoorNumberForSort(buildingA, unitA, a.unit);
+            const doorB = getDoorNumberForSort(buildingB, unitB, b.unit);
+            return doorA - doorB;
         }
         
         // 防呆：若有不符合格式的資料，退回基本的字串比較
@@ -116,7 +172,8 @@
         historicalRecords.forEach((term, index) => {
             // 根據搜尋條件過濾
             const filteredData = term.data.filter(item => 
-                item.unit.toLowerCase().includes(searchTerm.toLowerCase())
+                item.unit.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                formatUnitToDoorNumber(item.unit).toLowerCase().includes(searchTerm.toLowerCase())
             );
 
             // 若在搜尋狀態下此屆無資料符合，則不顯示這屆的區塊
@@ -130,69 +187,36 @@
             // 生成此屆的表格內容
             let tableRows = '';
             
-            // 將資料按 A, B, C 棟分類
-            const dataA = filteredData.filter(item => {
-                const m = item.unit.match(/[A-Za-z]/);
-                return m && m[0].toUpperCase() === 'A';
-            });
-            const dataB = filteredData.filter(item => {
-                const m = item.unit.match(/[A-Za-z]/);
-                return m && m[0].toUpperCase() === 'B';
-            });
-            const dataC = filteredData.filter(item => {
-                const m = item.unit.match(/[A-Za-z]/);
-                return m && m[0].toUpperCase() === 'C';
-            });
-
-            // 找出三棟中最多戶數的一棟，決定表格要畫幾列
-            const maxRows = Math.max(dataA.length, dataB.length, dataC.length);
+            // 改為每列顯示 5 戶
+            const maxRows = Math.ceil(filteredData.length / 5);
 
             // 搜尋不到時的防呆提示
             if (maxRows === 0) {
-                tableRows = `<tr><td colspan="9" class="text-center text-muted py-3">找不到符合條件的紀錄</td></tr>`;
+                tableRows = `<tr><td colspan="15" class="text-center text-muted py-3">找不到符合條件的紀錄</td></tr>`;
             } else {
                 for (let i = 0; i < maxRows; i++) {
-                    const itemA = dataA[i];
-                    const itemB = dataB[i];
-                    const itemC = dataC[i];
+                    // 一列裝入 5 戶
+                    const items = [
+                        filteredData[i * 5], filteredData[i * 5 + 1],
+                        filteredData[i * 5 + 2], filteredData[i * 5 + 3],
+                        filteredData[i * 5 + 4]
+                    ];
 
                     let rowHTML = '';
-
-                    // 渲染 A 棟
-                    if (itemA) {
-                        const indexA = term.data.indexOf(itemA) + 1; // 維持在總名單中的絕對編號
-                        rowHTML += `
-                            <th scope="row">${indexA}</th>
-                            <td class="fw-bold">${itemA.unit}</td>
-                            <td>${itemA.slot}</td>
-                        `;
-                    } else {
-                        rowHTML += `<td></td><td></td><td></td>`;
-                    }
-
-                    // 渲染 B 棟
-                    if (itemB) {
-                        const indexB = term.data.indexOf(itemB) + 1;
-                        rowHTML += `
-                            <th scope="row">${indexB}</th>
-                            <td class="fw-bold">${itemB.unit}</td>
-                            <td>${itemB.slot}</td>
-                        `;
-                    } else {
-                        rowHTML += `<td></td><td></td><td></td>`;
-                    }
-
-                    // 渲染 C 棟
-                    if (itemC) {
-                        const indexC = term.data.indexOf(itemC) + 1;
-                        rowHTML += `
-                            <th scope="row">${indexC}</th>
-                            <td class="fw-bold">${itemC.unit}</td>
-                            <td>${itemC.slot}</td>
-                        `;
-                    } else {
-                        rowHTML += `<td></td><td></td><td></td>`;
-                    }
+                    items.forEach(item => {
+                        if (item) {
+                            const index = term.data.indexOf(item) + 1; // 維持在總名單中的絕對編號
+                            const formattedUnit = formatUnitToDoorNumber(item.unit);
+                            const oldUnitDisplay = formattedUnit !== item.unit ? ` <span class="text-muted fw-normal small">(${item.unit})</span>` : '';
+                            rowHTML += `
+                                <th scope="row" class="table-secondary text-muted">${index}</th>
+                                <td class="table-light fw-bold">${formattedUnit}${oldUnitDisplay}</td>
+                                <td>${item.slot}</td>
+                            `;
+                        } else {
+                            rowHTML += `<td class="table-secondary"></td><td class="table-light"></td><td></td>`;
+                        }
+                    });
 
                     tableRows += `<tr>${rowHTML}</tr>`;
                 }
@@ -212,13 +236,19 @@
                                     <thead class="table-dark">
                                         <tr>
                                             <th scope="col">#</th>
-                                            <th scope="col">A棟 戶別</th>
+                                            <th scope="col">門牌</th>
                                             <th scope="col">車位號碼</th>
                                             <th scope="col">#</th>
-                                            <th scope="col">B棟 戶別</th>
+                                            <th scope="col">門牌</th>
                                             <th scope="col">車位號碼</th>
                                             <th scope="col">#</th>
-                                            <th scope="col">C棟 戶別</th>
+                                            <th scope="col">門牌</th>
+                                            <th scope="col">車位號碼</th>
+                                            <th scope="col">#</th>
+                                            <th scope="col">門牌</th>
+                                            <th scope="col">車位號碼</th>
+                                            <th scope="col">#</th>
+                                            <th scope="col">門牌</th>
                                             <th scope="col">車位號碼</th>
                                         </tr>
                                     </thead>
