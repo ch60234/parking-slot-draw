@@ -60,6 +60,31 @@ const firstTermData = [
 // 2. 抽籤用的基礎戶別資料 (清除車位號碼結果，僅保留戶別 for 抽籤頁面 render)
 const baseUnits = firstTermData.map(item => ({ unit: item.unit }));
 
+// 新舊制轉換邏輯
+// A1:A -2
+// A2:A -1
+// A3:A -6
+// A5:A -5
+// A6:A -3
+
+// B1:B -6
+// B2:B -5
+// B3:B -3
+// B5:B -2
+// B6:B -1
+
+// C1:C -1
+// C2:C -6
+// C3:C -5
+// C5:C -3
+// C6:C -2
+// 1C1:C1
+// 1C3:C1-3
+// 1C5:C1-2
+// 1C6:C1-1
+
+
+//
 const firstTermDataBackUp = [
     {"unit": "A2-2", "slot": "209"}, {"unit": "A6-5", "slot": "8"}, {"unit": "A11-1", "slot": "43"}, {"unit": "A15-3", "slot": "9"},
     {"unit": "B6-3", "slot": "197"}, {"unit": "B11-6", "slot": "131"}, {"unit": "B15-2", "slot": "75"}, {"unit": "C5-5", "slot": "135"},

@@ -14,6 +14,16 @@
         .header-title {
             color: #d63384; /* 櫻花粉色系點綴 */
         }
+        @media print {
+            .nav, input[type="text"], .accordion-button::after, #exportPdfBtn {
+                display: none !important;
+            }
+            body { background-color: #fff !important; padding-top: 0; font-size: 12px; }
+            .card, .accordion, .accordion-item { border: none !important; box-shadow: none !important; }
+            .collapse { display: block !important; } /* 列印時強制將所有歷史清單全展開 */
+            .table-responsive { overflow: visible !important; }
+            .table th, .table td { padding: 0.25rem !important; }
+        }
     </style>
 </head>
 <body>
@@ -39,6 +49,7 @@
             <h5 class="card-title mb-0">歷屆車位分配名冊</h5>
             <div class="d-flex gap-2">
                 <input type="text" id="searchInput" class="form-control" placeholder="搜尋戶別 (例如: 2A1)">
+                <button id="exportPdfBtn" class="btn btn-outline-primary text-nowrap">🖨️ 匯出PDF</button>
             </div>
         </div>
     </div>
@@ -187,34 +198,47 @@
             // 生成此屆的表格內容
             let tableRows = '';
             
-            // 改為每列顯示 5 戶
-            const maxRows = Math.ceil(filteredData.length / 5);
+            // 分類 A, B, C 棟
+            const aData = [];
+            const bData = [];
+            const cData = [];
+            
+            filteredData.forEach(item => {
+                // 放寬比對條件：只要包含 A, B, C 就分進對應棟別
+                const match = item.unit.match(/[ABC]/i);
+                if (match) {
+                    const building = match[0].toUpperCase();
+                    if (building === 'A') aData.push(item);
+                    else if (building === 'B') bData.push(item);
+                    else if (building === 'C') cData.push(item);
+                } else {
+                    cData.push(item);
+                }
+            });
+
+            const maxRows = Math.max(aData.length, bData.length, cData.length);
 
             // 搜尋不到時的防呆提示
             if (maxRows === 0) {
-                tableRows = `<tr><td colspan="15" class="text-center text-muted py-3">找不到符合條件的紀錄</td></tr>`;
+                tableRows = `<tr><td colspan="9" class="text-center text-muted py-3">找不到符合條件的紀錄</td></tr>`;
             } else {
                 for (let i = 0; i < maxRows; i++) {
-                    // 一列裝入 5 戶
-                    const items = [
-                        filteredData[i * 5], filteredData[i * 5 + 1],
-                        filteredData[i * 5 + 2], filteredData[i * 5 + 3],
-                        filteredData[i * 5 + 4]
-                    ];
+                    const items = [aData[i], bData[i], cData[i]];
 
                     let rowHTML = '';
-                    items.forEach(item => {
+                    items.forEach((item, colIndex) => {
+                        const borderClass = colIndex > 0 ? 'border-start ' : '';
                         if (item) {
                             const index = term.data.indexOf(item) + 1; // 維持在總名單中的絕對編號
                             const formattedUnit = formatUnitToDoorNumber(item.unit);
                             const oldUnitDisplay = formattedUnit !== item.unit ? ` <span class="text-muted fw-normal small">(${item.unit})</span>` : '';
                             rowHTML += `
-                                <th scope="row" class="table-secondary text-muted">${index}</th>
+                                <th scope="row" class="${borderClass}table-secondary text-muted">${index}</th>
                                 <td class="table-light fw-bold">${formattedUnit}${oldUnitDisplay}</td>
                                 <td>${item.slot}</td>
                             `;
                         } else {
-                            rowHTML += `<td class="table-secondary"></td><td class="table-light"></td><td></td>`;
+                            rowHTML += `<td class="${borderClass}table-secondary"></td><td class="table-light"></td><td></td>`;
                         }
                     });
 
@@ -235,19 +259,18 @@
                                 <table class="table table-hover table-bordered bg-white text-center align-middle mb-0">
                                     <thead class="table-dark">
                                         <tr>
+                                            <th colspan="3" class="text-center">A棟</th>
+                                            <th colspan="3" class="text-center border-start">B棟</th>
+                                            <th colspan="3" class="text-center border-start">C棟</th>
+                                        </tr>
+                                        <tr>
                                             <th scope="col">#</th>
                                             <th scope="col">門牌</th>
                                             <th scope="col">車位號碼</th>
-                                            <th scope="col">#</th>
+                                            <th scope="col" class="border-start">#</th>
                                             <th scope="col">門牌</th>
                                             <th scope="col">車位號碼</th>
-                                            <th scope="col">#</th>
-                                            <th scope="col">門牌</th>
-                                            <th scope="col">車位號碼</th>
-                                            <th scope="col">#</th>
-                                            <th scope="col">門牌</th>
-                                            <th scope="col">車位號碼</th>
-                                            <th scope="col">#</th>
+                                            <th scope="col" class="border-start">#</th>
                                             <th scope="col">門牌</th>
                                             <th scope="col">車位號碼</th>
                                         </tr>
@@ -276,6 +299,10 @@
     // 搜尋功能
     searchInput.addEventListener('input', (e) => {
         renderAccordion(e.target.value);
+    });
+
+    document.getElementById('exportPdfBtn').addEventListener('click', () => {
+        window.print();
     });
 </script>
 
