@@ -60,6 +60,15 @@ const firstTermData = [
 // 2. 抽籤用的基礎戶別資料 (清除車位號碼結果，僅保留戶別 for 抽籤頁面 render)
 const baseUnits = firstTermData.map(item => ({ unit: item.unit }));
 
+// 3. 抽籤用的車位號碼資料 (編碼補到 218，並排除殘障車位 1, 2, 4, 207)
+const disabledSlots = [1, 2, 4, 207];
+const baseSlots = [];
+for (let i = 1; i <= 218; i++) {
+    if (!disabledSlots.includes(i)) {
+        baseSlots.push(i.toString());
+    }
+}
+
 // 新舊制轉換邏輯
 // A1:A -2
 // A2:A -1
