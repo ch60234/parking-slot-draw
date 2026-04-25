@@ -50,7 +50,7 @@
             <h5 class="card-title mb-0">車位分配名冊</h5>
             <div class="d-flex gap-2">
                 <input type="text" id="searchInput" class="form-control" placeholder="搜尋戶別 (例如: A2-5)">
-                
+
                 <!-- 模式切換 (Radio) -->
                 <div class="btn-group" role="group" aria-label="抽籤模式切換">
                     <input type="radio" class="btn-check" name="modeRadio" id="modeTest" autocomplete="off" checked>
@@ -60,7 +60,7 @@
                     <label class="btn btn-outline-danger text-nowrap" for="modeDraw">⚠️ 正式模式</label>
                 </div>
 
-                <button id="drawBtn" class="btn btn-primary text-nowrap">🎲 開始第二屆抽籤</button>
+                <button id="drawBtn" class="btn btn-primary text-nowrap">🎲 開始抽籤</button>
                 <button id="unlockBtn" class="btn btn-outline-danger text-nowrap d-none">🔓 解鎖</button>
                 <button id="exportPdfBtn" class="btn btn-outline-primary text-nowrap d-none">🖨️ 匯出PDF</button>
                 <button id="exportBtn" class="btn btn-success text-nowrap d-none">📥 匯出CSV</button>
@@ -107,7 +107,7 @@
     /**
      * 戶別轉換邏輯 (舊制轉新制門牌號)
      * 舊制: [樓層][棟別][戶型] -> 新制: [棟別][樓層]-[門牌號]
-     * 
+     *
      * 對應規則:
      * A棟 - A1:2, A2:1, A3:6, A5:5, A6:3
      * B棟 - B1:6, B2:5, B3:3, B5:2, B6:1
@@ -193,6 +193,9 @@
     // 將戶別資料依照客製化排序
     baseUnits.sort(customUnitSort);
 
+    // 全域變數：設定目前的屆數名稱 (每年只需修改這裡)
+    const CURRENT_TERM_NAME = '第二屆';
+
     // DOM 元素
     const tableBody = document.getElementById('parkingTableBody');
     const drawBtn = document.getElementById('drawBtn');
@@ -203,20 +206,23 @@
     const exportPdfBtn = document.getElementById('exportPdfBtn');
     const exportBtn = document.getElementById('exportBtn');
 
+    // 初始化按鈕文字
+    drawBtn.innerHTML = `🎲 開始${CURRENT_TERM_NAME}抽籤`;
+
     // 狀態管理
     let currentRenderData = [...baseUnits];
-    let isSecondTermDrawn = false;
+    let isTermDrawn = false;
     let currentFingerprint = ''; // 用來暫存目前的數位指紋供匯出使用
 
     // 2. 初始化表格，顯示基礎戶別資料
-    function renderTable(data, isSecondTerm = false) {
+    function renderTable(data, isDrawnMode = false) {
         tableBody.innerHTML = '';
-        
+
         // 分類 A, B, C 棟
         const aData = [];
         const bData = [];
         const cData = [];
-        
+
         data.forEach(item => {
             // 放寬比對條件：只要包含 A, B, C 就分進對應棟別
             const match = item.unit.match(/[ABC]/i);
@@ -249,7 +255,7 @@
                 if (item) {
                     // 透過戶別字串去 baseUnits 找原始的絕對編號，確保抽籤後也能正確對應
                     const index = baseUnits.findIndex(u => u.unit === item.unit) + 1;
-                    const termCell = isSecondTerm
+                    const termCell = isDrawnMode
                         ? `<td class="fw-bold text-primary fs-5">${item.newSlot}</td>`
                         : `<td class="text-muted">尚未抽籤</td>`;
                     const formattedUnit = formatUnitToDoorNumber(item.unit);
@@ -275,11 +281,11 @@
     // 搜尋功能：方便查看特定戶別的歷屆與抽籤結果
     searchInput.addEventListener('input', (e) => {
         const searchTerm = e.target.value.toLowerCase();
-        const filteredData = currentRenderData.filter(item => 
-            item.unit.toLowerCase().includes(searchTerm) || 
+        const filteredData = currentRenderData.filter(item =>
+            item.unit.toLowerCase().includes(searchTerm) ||
             formatUnitToDoorNumber(item.unit).toLowerCase().includes(searchTerm)
         );
-        renderTable(filteredData, isSecondTermDrawn);
+        renderTable(filteredData, isTermDrawn);
     });
 
     // 3. 洗牌演算法 (Fisher-Yates Shuffle) - 確保抽籤隨機且公平
@@ -303,16 +309,16 @@
         return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    // 4. 執行第二屆抽籤邏輯
+    // 4. 執行抽籤邏輯
     drawBtn.addEventListener('click', async () => {
         const isTestMode = modeTest.checked;
-        
+
         if (!isTestMode) {
             // 正式模式：鎖定抽籤按鈕，並顯示解鎖按鈕以防誤觸
             drawBtn.disabled = true;
             unlockBtn.classList.remove('d-none');
         }
-        
+
         // 提取所有可用的車位號碼
         const availableSlots = firstTermData.map(item => item.slot);
         // 將車位號碼打亂
@@ -325,7 +331,7 @@
             };
         });
 
-        isSecondTermDrawn = true;
+        isTermDrawn = true;
 
         // --- 抽籤驗證機制 ---
         const assignedSlots = currentRenderData.map(item => item.newSlot);
@@ -334,10 +340,10 @@
         const isCountMatch = assignedSlots.length === baseUnits.length;
         // 2. 驗證分配出的車位是否有重複 (Set 會自動剔除重複值)
         const isNoDuplicate = uniqueSlots.size === assignedSlots.length;
-        
+
         const validationEl = document.getElementById('validationResult');
         validationEl.classList.remove('d-none');
-        
+
         if (isCountMatch && isNoDuplicate) {
             // 驗證通過後，計算數位指紋
             const fingerprint = await generateDrawFingerprint(currentRenderData);
@@ -369,13 +375,13 @@
         if (confirmUnlock) {
             drawBtn.disabled = false;
             unlockBtn.classList.add('d-none');
-            
+
             const validationEl = document.getElementById('validationResult');
             validationEl.classList.add('d-none');
             validationEl.innerHTML = ''; // 清空驗證紀錄與指紋
-            
+
             currentRenderData = [...baseUnits]; // 抽籤結果清空，恢復為基礎戶別資料
-            isSecondTermDrawn = false; // 狀態重置
+            isTermDrawn = false; // 狀態重置
             currentFingerprint = '';
             exportPdfBtn.classList.add('d-none');
             exportBtn.classList.add('d-none');
@@ -389,7 +395,7 @@
             drawBtn.disabled = false;
             unlockBtn.classList.add('d-none');
             document.body.style.backgroundColor = '#e8f5e9'; // 換回淡綠色背景 (測試模式)
-            
+
             const validationEl = document.getElementById('validationResult');
             validationEl.classList.add('d-none');
             validationEl.innerHTML = ''; // 模式切換時清空驗證紀錄與指紋
@@ -397,7 +403,7 @@
             exportPdfBtn.classList.add('d-none');
             exportBtn.classList.add('d-none');
             currentRenderData = [...baseUnits]; // 抽籤結果清空，恢復為基礎戶別資料
-            isSecondTermDrawn = false; // 狀態重置
+            isTermDrawn = false; // 狀態重置
             searchInput.dispatchEvent(new Event('input')); // 觸發重新渲染畫面
         }
     });
@@ -406,7 +412,7 @@
     modeDraw.addEventListener('change', () => {
         if (modeDraw.checked) {
             document.body.style.backgroundColor = '#fff0f5'; // 換成淡粉紅色背景
-            
+
             const validationEl = document.getElementById('validationResult');
             validationEl.classList.add('d-none');
             validationEl.innerHTML = ''; // 模式切換時清空驗證紀錄與指紋
@@ -414,23 +420,23 @@
             exportPdfBtn.classList.add('d-none');
             exportBtn.classList.add('d-none');
             currentRenderData = [...baseUnits]; // 抽籤結果清空，恢復為基礎戶別資料
-            isSecondTermDrawn = false; // 狀態重置
+            isTermDrawn = false; // 狀態重置
             searchInput.dispatchEvent(new Event('input')); // 觸發重新渲染畫面
         }
     });
 
     // 8. 匯出 Excel (CSV) 邏輯
     exportBtn.addEventListener('click', () => {
-        if (!isSecondTermDrawn) return;
+        if (!isTermDrawn) return;
 
         // 加上 BOM (\uFEFF) 讓 Excel 能夠正確解析 UTF-8 中文
         let csvContent = '\uFEFF';
         csvContent += 'A棟新制門牌,A棟舊制戶別,A棟車位號碼,B棟新制門牌,B棟舊制戶別,B棟車位號碼,C棟新制門牌,C棟舊制戶別,C棟車位號碼\n';
-        
+
         const aData = [];
         const bData = [];
         const cData = [];
-        
+
         currentRenderData.forEach(item => {
             // 放寬比對條件：只要包含 A, B, C 就分進對應棟別
             const match = item.unit.match(/[ABC]/i);
@@ -469,7 +475,7 @@
         const link = document.createElement('a');
         link.setAttribute('href', url);
         const modePrefix = modeTest.checked ? "[測試]" : "[正式]";
-        link.setAttribute('download', `${modePrefix}第二屆機車位抽籤結果.csv`);
+        link.setAttribute('download', `${modePrefix}${CURRENT_TERM_NAME}機車位抽籤結果.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -477,7 +483,10 @@
 
     // 9. PDF 列印邏輯
     exportPdfBtn.addEventListener('click', () => {
+        const originalTitle = document.title;
+        document.title = `${CURRENT_TERM_NAME}機車位抽籤系統`; // 更改網頁標題，讓瀏覽器預設 PDF 檔名
         window.print();
+        document.title = originalTitle; // 呼叫列印後，將標題恢復原狀
     });
 
 </script>

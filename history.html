@@ -15,7 +15,7 @@
             color: #d63384; /* 櫻花粉色系點綴 */
         }
         @media print {
-            .nav, input[type="text"], .accordion-button::after, #exportPdfBtn {
+            .nav, input[type="text"], .accordion-button::after {
                 display: none !important;
             }
             body { background-color: #fff !important; padding-top: 0; font-size: 12px; }
@@ -48,8 +48,7 @@
         <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
             <h5 class="card-title mb-0">歷屆車位分配名冊</h5>
             <div class="d-flex gap-2">
-                <input type="text" id="searchInput" class="form-control" placeholder="搜尋戶別 (例如: 2A1)">
-                <button id="exportPdfBtn" class="btn btn-outline-primary text-nowrap">🖨️ 匯出PDF</button>
+                <input type="text" id="searchInput" class="form-control" placeholder="搜尋戶別 (例如: A2-1)">
             </div>
         </div>
     </div>
@@ -70,6 +69,13 @@
     // 將歷史紀錄改為陣列結構，越新的屆期可以透過新增在「陣列最前面」來保持置頂
     const historicalRecords = [
         {
+            id: "term2",
+            title: "第二屆機車位",
+            period: "有效日期：115年6月1日至116年5月30日",
+            fingerprint: "413f3eb11ac4db4794553b8534f1b3039c1b7fbc6ec46fb1212c283b4f5f7a73",
+            data: [...secondTermData]
+        },
+        {
             id: "term1",
             title: "第一屆機車位",
             period: "有效日期：114年6月1日至115年5月30日",
@@ -82,7 +88,7 @@
     /**
      * 戶別轉換邏輯 (舊制轉新制門牌號)
      * 舊制: [樓層][棟別][戶型] -> 新制: [棟別][樓層]-[門牌號]
-     * 
+     *
      * 對應規則:
      * A棟 - A1:2, A2:1, A3:6, A5:5, A6:3
      * B棟 - B1:6, B2:5, B3:3, B5:2, B6:1
@@ -162,7 +168,7 @@
             const doorB = getDoorNumberForSort(buildingB, unitB, b.unit);
             return doorA - doorB;
         }
-        
+
         // 防呆：若有不符合格式的資料，退回基本的字串比較
         return a.unit.localeCompare(b.unit, 'zh-Hant', { numeric: true });
     }
@@ -182,7 +188,7 @@
 
         historicalRecords.forEach((term, index) => {
             // 根據搜尋條件過濾
-            const filteredData = term.data.filter(item => 
+            const filteredData = term.data.filter(item =>
                 item.unit.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 formatUnitToDoorNumber(item.unit).toLowerCase().includes(searchTerm.toLowerCase())
             );
@@ -197,12 +203,12 @@
 
             // 生成此屆的表格內容
             let tableRows = '';
-            
+
             // 分類 A, B, C 棟
             const aData = [];
             const bData = [];
             const cData = [];
-            
+
             filteredData.forEach(item => {
                 // 放寬比對條件：只要包含 A, B, C 就分進對應棟別
                 const match = item.unit.match(/[ABC]/i);
@@ -246,6 +252,11 @@
                 }
             }
 
+            // 如果該屆資料有數位指紋，則產生對應的 HTML 區塊
+            const fingerprintHTML = term.fingerprint
+                ? `<div class="px-3 py-2 bg-light border-bottom text-muted small" style="word-break: break-all;">🔐 抽籤數位指紋 (SHA-256)：<span class="font-monospace text-dark user-select-all">${term.fingerprint}</span></div>`
+                : '';
+
             const accordionItemHTML = `
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="heading-${term.id}">
@@ -254,6 +265,7 @@
                         </button>
                     </h2>
                     <div id="collapse-${term.id}" class="accordion-collapse collapse ${isOpen}" aria-labelledby="heading-${term.id}" data-bs-parent="#historyAccordion">
+                        ${fingerprintHTML}
                         <div class="accordion-body p-0">
                             <div class="table-responsive">
                                 <table class="table table-hover table-bordered bg-white text-center align-middle mb-0">
@@ -301,9 +313,6 @@
         renderAccordion(e.target.value);
     });
 
-    document.getElementById('exportPdfBtn').addEventListener('click', () => {
-        window.print();
-    });
 </script>
 
 </body>
